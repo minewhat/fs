@@ -55,6 +55,16 @@ function join(path, request) {
 	if(absoluteNixRegExp.test(path)) return normalize(path + "/" + request);
 	return normalize(path + "/" + request);
 };
+function MemoryFileSystemError(err, path) {
+	Error.call(this)
+	if (Error.captureStackTrace)
+		Error.captureStackTrace(this, arguments.callee)
+	this.code = err;
+	this.errno = err.errno;
+	this.message = err.description;
+	this.path = path;
+}
+MemoryFileSystemError.prototype = new Error();
 
 
 function MemoryFileSystem(data) {
@@ -78,7 +88,7 @@ function pathToArray(path) {
 	var nix = /^\//.test(path);
 	if(!nix) {
 		if(!/^[A-Za-z]:/.test(path)) {
-			throw new Error(-1, path);
+			throw new MemoryFileSystemError("EINVAL", path);
 		}
 		path = path.replace(/[\\\/]+/g, "\\"); // multi slashs
 		path = path.split(/[\\\/]/);
@@ -132,7 +142,7 @@ MemoryFileSystem.prototype.statSync = function(_path) {
 			isSocket: falseFn
 		};
 	} else {
-		throw new Error(-2, _path);
+		throw new MemoryFileSystemError("ENOENT", _path);
 	}
 };
 
@@ -141,14 +151,14 @@ MemoryFileSystem.prototype.readFileSync = function(_path, encoding) {
 	var current = this.data;
 	for(var i = 0; i < path.length - 1; i++) {
 		if(!isDir(current[path[i]]))
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 		current = current[path[i]];
 	}
 	if(!isFile(current[path[i]])) {
 		if(isDir(current[path[i]]))
-			throw new Error(-3, _path);
+			throw new MemoryFileSystemError("EISDIR", _path);
 		else
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 	}
 	current = current[path[i]];
 	return encoding ? current.toString(encoding) : current;
@@ -160,14 +170,14 @@ MemoryFileSystem.prototype.readdirSync = function(_path) {
 	var current = this.data;
 	for(var i = 0; i < path.length - 1; i++) {
 		if(!isDir(current[path[i]]))
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 		current = current[path[i]];
 	}
 	if(!isDir(current[path[i]])) {
 		if(isFile(current[path[i]]))
-			throw new Error(-4, _path);
+			throw new MemoryFileSystemError("ENOTDIR", _path);
 		else
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 	}
 	return Object.keys(current[path[i]]).filter(Boolean);
 };
@@ -178,7 +188,7 @@ MemoryFileSystem.prototype.mkdirpSync = function(_path) {
 	var current = this.data;
 	for(var i = 0; i < path.length; i++) {
 		if(isFile(current[path[i]]))
-			throw new Error(-4, _path);
+			throw new MemoryFileSystemError("ENOTDIR", _path);
 		else if(!isDir(current[path[i]]))
 			current[path[i]] = {"":true};
 		current = current[path[i]];
@@ -192,13 +202,13 @@ MemoryFileSystem.prototype.mkdirSync = function(_path) {
 	var current = this.data;
 	for(var i = 0; i < path.length - 1; i++) {
 		if(!isDir(current[path[i]]))
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 		current = current[path[i]];
 	}
 	if(isDir(current[path[i]]))
-		throw new Error(-5, _path);
+		throw new MemoryFileSystemError("EEXIST", _path);
 	else if(isFile(current[path[i]]))
-		throw new Error(-4, _path);
+		throw new MemoryFileSystemError("ENOTDIR", _path);
 	current[path[i]] = {"":true};
 	return;
 };
@@ -206,16 +216,16 @@ MemoryFileSystem.prototype.mkdirSync = function(_path) {
 MemoryFileSystem.prototype._remove = function(_path, name, testFn) {
 	var path = pathToArray(_path);
 	if(path.length === 0) {
-		throw new Error(-6, _path);
+		throw new MemoryFileSystemError("EPERM", _path);
 	}
 	var current = this.data;
 	for(var i = 0; i < path.length - 1; i++) {
 		if(!isDir(current[path[i]]))
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 		current = current[path[i]];
 	}
 	if(!testFn(current[path[i]]))
-		throw new Error(-2, _path);
+		throw new MemoryFileSystemError("ENOENT", _path);
 	delete current[path[i]];
 	return;
 };
@@ -229,23 +239,23 @@ MemoryFileSystem.prototype.unlinkSync = function(_path) {
 };
 
 MemoryFileSystem.prototype.readlinkSync = function(_path) {
-	throw new Error(-7, _path);
+	throw new MemoryFileSystemError("ENOSYS", _path);
 };
 
 MemoryFileSystem.prototype.writeFileSync = function(_path, content, encoding) {
 	if(!content && !encoding) console.log(_path,"No content");
 	var path = pathToArray(_path);
 	if(path.length === 0) {
-		throw new Error(-3, _path);
+		throw new MemoryFileSystemError("EISDIR", _path);
 	}
 	var current = this.data;
 	for(var i = 0; i < path.length - 1; i++) {
 		if(!isDir(current[path[i]]))
-			throw new Error(-2, _path);
+			throw new MemoryFileSystemError("ENOENT", _path);
 		current = current[path[i]];
 	}
 	if(isDir(current[path[i]]))
-		throw new Error(-3, _path);
+		throw new MemoryFileSystemError("EISDIR", _path);
 	current[path[i]] = encoding || typeof content === "string" ? new Buffer(content, encoding) : content;
 	return;
 };
