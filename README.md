@@ -1,2 +1,1 @@
-# fs
-mem fs
+# Memory based fs
